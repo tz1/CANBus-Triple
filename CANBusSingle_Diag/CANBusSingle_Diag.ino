@@ -29,7 +29,6 @@
 // merr, wake err tx2 tx1 tx0 rx1 rx1
 #define EFLG 0x2D               // Error Register address
 
-
 #define NCANS 1
 static byte can_ss[NCANS];      // slave selects
 
@@ -84,7 +83,6 @@ static bool cansend(byte bid, unsigned long ident, bool extid, byte len, byte * 
     SPI.transfer(txbuf);
     digitalWrite(can_ss[bid], HIGH);
 
-
     return true;
 }
 
@@ -97,7 +95,6 @@ static void canread(byte bid)
     byte rxstatus = canstatus(bid) & 3;
     if (!rxstatus)
         return;
-
 
     byte bufsel;
     byte which = READ_RX_BUF_0_ID;
@@ -133,7 +130,7 @@ static void canread(byte bid)
 // static const unsigned char propseg = 2, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 13
 // static const unsigned char propseg = 3, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 14
 // static const unsigned char propseg = 4, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 15 @80%
-   static const unsigned char propseg = 5, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 16 SamplePoint @ 81.25% (for 16Mhz)
+static const unsigned char propseg = 5, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1;     // 16 SamplePoint @ 81.25% (for 16Mhz)
 // static const unsigned char propseg = 6, phaseseg1 = 5, phaseseg2 = 2, syncjump = 2; // 17
 // static const unsigned char propseg = 7, phaseseg1 = 4, phaseseg2 = 3, syncjump = 2; // 18
 // static const unsigned char propseg = 7, phaseseg1 = 5, phaseseg2 = 3, syncjump = 2; // 19
@@ -145,7 +142,7 @@ static void canread(byte bid)
 // static const unsigned char propseg = 7, phaseseg1 = 7, phaseseg2 = 7, syncjump = 3; // 25 @68%
 
 #define CAN_XTAL 16000000
-static const unsigned maxrate = (CAN_XTAL/1000) / (propseg+phaseseg1+phaseseg2+4); // 10000 is CAN_XTAL/1000
+static const unsigned maxrate = (CAN_XTAL / 1000) / (propseg + phaseseg1 + phaseseg2 + 4);      // 10000 is CAN_XTAL/1000
 
 // 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
@@ -154,7 +151,7 @@ static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
 
     cnf1 = (maxrate / bitrate) - 1;
     if (cnf1 > 63 || (cnf1 + 1) * bitrate != maxrate)
-        return -1;          // overflow or inexact
+        return -1;              // overflow or inexact
     //cnf1 |= syncjump;
 
     cnf2 = 0x80 | phaseseg1 << 3 | propseg;
@@ -189,6 +186,7 @@ void canmode(byte bid, byte mode)       //put CAN controller in one of five mode
     digitalWrite(can_ss[bid], HIGH);
 }
 
+#define USEINTS
 #ifdef USEINTS
 // Enable / Disable interrupt pin on message Rx
 void canrxinte(byte bid, bool enable)
@@ -281,7 +279,11 @@ void printcanrx()
 
         bid = *frameinfo++;
 
+#if 0
         Serial.print(bid);
+#else
+        Serial.print(millis());
+#endif
         unsigned long id = 0;
         for (int j = 0; j < 4; j++) {
             id <<= 8;
@@ -344,9 +346,9 @@ void printcanrx()
         }
         if (mbits) {
             *benc++ = b64[more];
-// "correct" b64 with equals termination
+            // "correct" b64 with equals termination
             *benc++ = '=';
-            if( mbits == 2 )
+            if (mbits == 2)
                 *benc++ = '=';
         }
         *benc = 0;
@@ -357,17 +359,16 @@ void printcanrx()
 
 void loop()
 {
-    static unsigned long x;
+#ifndef USEINTS
     canread(0);
+#endif
     printcanrx();
 #if 1
+    static unsigned long x;
     if (!(x++ & 65535)) {
-      Serial.println(maxrate);
-      Serial.println("HC");
         cansend(0, 0x08880808, true, 8, (byte *) "SinglCAN");
     }
     if (!((x ^ 32768) & 65535)) {
-      Serial.println("XX");
         cansend(0, 0x7E8, false, 8, (byte *) "BusTrafq");
     }
 #endif
