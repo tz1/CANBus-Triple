@@ -122,34 +122,47 @@ static void canread(byte bid)
 }
 
 // Time Quanta (prescaling) with values for each closest to 80% as per SAE spec
-// static const unsigned char propseg = 2, phaseseg1 = 1, phaseseg2 = 1, syncjump = 0; // 8 SP@75%
-// static const unsigned char propseg = 2, phaseseg1 = 2, phaseseg2 = 1, syncjump = 0; // 9
-// static const unsigned char propseg = 2, phaseseg1 = 3, phaseseg2 = 1, syncjump = 0; // 10 @80%
-// static const unsigned char propseg = 2, phaseseg1 = 4, phaseseg2 = 1, syncjump = 1; // 11
-// static const unsigned char propseg = 2, phaseseg1 = 5, phaseseg2 = 1, syncjump = 1; // 12
-// static const unsigned char propseg = 2, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 13
-// static const unsigned char propseg = 3, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 14
-// static const unsigned char propseg = 4, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1; // 15 @80%
-static const unsigned char propseg = 5, phaseseg1 = 5, phaseseg2 = 2, syncjump = 1;     // 16 SamplePoint @ 81.25% (for 16Mhz)
-// static const unsigned char propseg = 6, phaseseg1 = 5, phaseseg2 = 2, syncjump = 2; // 17
-// static const unsigned char propseg = 7, phaseseg1 = 4, phaseseg2 = 3, syncjump = 2; // 18
-// static const unsigned char propseg = 7, phaseseg1 = 5, phaseseg2 = 3, syncjump = 2; // 19
-// static const unsigned char propseg = 7, phaseseg1 = 6, phaseseg2 = 3, syncjump = 2; // 20 SamplePoint @ 80.0%
-// static const unsigned char propseg = 7, phaseseg1 = 7, phaseseg2 = 3, syncjump = 2; // 21
-// static const unsigned char propseg = 7, phaseseg1 = 7, phaseseg2 = 4, syncjump = 2; // 22
-// static const unsigned char propseg = 7, phaseseg1 = 7, phaseseg2 = 5, syncjump = 2; // 23
-// static const unsigned char propseg = 7, phaseseg1 = 7, phaseseg2 = 6, syncjump = 3; // 24
-// static const unsigned char propseg = 7, phaseseg1 = 7, phaseseg2 = 7, syncjump = 3; // 25 @68%
+PROGMEM prog_uchar quantimings[] = {
+    2,1,1,0,//8 SP@75%
+    2,2,1,0,
+    2,3,1,0,//10 @80
+    2,4,1,1,
+    2,5,1,1,
+    2,5,2,1,
+    3,5,2,1,
+    4,5,2,1,//15 @80
+    5,5,2,1,//16 @81.25
+    6,5,2,2,
+    7,4,3,2,
+    7,5,3,2,
+    7,6,3,2,//20 @ 80
+    7,7,3,2,
+    7,7,4,2,
+    7,7,5,2,
+    7,7,6,3,
+    7,7,7,3,
+};
 
+// MikroBus CAN http://microcontrollershop.com/product_info.php?products_id=4618
+//#define CAN_XTAL 10000000
+// CAN_SPI clock http://microcontrollershop.com/product_info.php?products_id=4719
 #define CAN_XTAL 16000000
-static const unsigned maxrate = (CAN_XTAL / 1000) / (propseg + phaseseg1 + phaseseg2 + 4);      // 10000 is CAN_XTAL/1000
 
-// 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
 {
-    byte cnf1, cnf2, cnf3;
+    byte q = 16; // manually selected for now, but can search for best combination
+    byte propseg = pgm_read_byte_near(quantimings+((q-8)<<2));
+    byte phaseseg1 = pgm_read_byte_near(quantimings+((q-8)<<2)+1);
+    byte phaseseg2 = pgm_read_byte_near(quantimings+((q-8)<<2)+2);
+    byte syncjump = pgm_read_byte_near(quantimings+((q-8)<<2)+3);
+// 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 
+    unsigned maxrate = (CAN_XTAL / 1000) / (propseg + phaseseg1 + phaseseg2 + 4);
+
+    byte cnf1, cnf2, cnf3;
     cnf1 = (maxrate / bitrate) - 1;
+    // the (cnf1+1)*bitrate may be too strict, particularly for things like 83333 baud
+    // it should be within 1%, but probably 3% would work.
     if (cnf1 > 63 || (cnf1 + 1) * bitrate != maxrate)
         return -1;              // overflow or inexact
     //cnf1 |= syncjump;

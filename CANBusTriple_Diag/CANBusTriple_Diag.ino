@@ -119,28 +119,48 @@ static void canread(byte bid)
     digitalWrite(BOOT_LED, LOW);
 }
 
-#define CAN_XTAL 16000000 // divided by 2 for Time Quanta period
-// 8Tq: 211 221 231 241 251 252 352 452 [16:552] 652 743 753 763 773 774 775 776 777 :25Tq
-static const unsigned char propseg = 5, phaseseg1 = 5, phaseseg2 = 2, syncjump = 0; // SamplePoint @ 81.25%
+// Time Quanta (prescaling) with values for each closest to 80% as per SAE spec
+PROGMEM prog_uchar quantimings[] = {
+    2,1,1,0,//8 SP@75%
+    2,2,1,0,
+    2,3,1,0,//10 @80
+    2,4,1,1,
+    2,5,1,1,
+    2,5,2,1,
+    3,5,2,1,
+    4,5,2,1,//15 @80
+    5,5,2,1,//16 @81.25
+    6,5,2,2,
+    7,4,3,2,
+    7,5,3,2,
+    7,6,3,2,//20 @ 80
+    7,7,3,2,
+    7,7,4,2,
+    7,7,5,2,
+    7,7,6,3,
+    7,7,7,3,
+};
+
+//CANBus triple clkout
+#define CAN_XTAL 8000000
+
 // 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
 {
-    byte cnf1, cnf2, cnf3;
+    byte q=16;
+    byte propseg = pgm_read_byte_near(quantimings+((q-8)<<2));
+    byte phaseseg1 = pgm_read_byte_near(quantimings+((q-8)<<2)+1);
+    byte phaseseg2 = pgm_read_byte_near(quantimings+((q-8)<<2)+2);
+    byte syncjump = pgm_read_byte_near(quantimings+((q-8)<<2)+3);
 
-#if 0
-    if (bitrate == 1000) {
-        cnf1 = 0x80; // syncjump == 2+1
-        phaseseg1 = 0;
-        propseg = 2;
-    }
-    else
-#endif
-    {
-        cnf1 = (500 / bitrate) - 1;
-        if (cnf1 > 63 || (cnf1 + 1) * bitrate != 500)
-            return -1;          // overflow or inexact
-        //cnf1 |= syncjump;
-    }
+    unsigned maxrate = (CAN_XTAL / 1000) / (propseg + phaseseg1 + phaseseg2 + 4);
+
+    byte cnf1, cnf2, cnf3;
+    cnf1 = (maxrate / bitrate) - 1;
+    if (cnf1 > 63 || (cnf1 + 1) * bitrate != maxrate)
+        return -1;              // overflow or inexact
+    //cnf1 |= syncjump;
+
     cnf2 = 0x80 | phaseseg1 << 3 | propseg;
     cnf3 = phaseseg2;
 
@@ -229,12 +249,6 @@ void setup()
     digitalWrite(BOOT_LED, LOW);
 
     // SPI setup
-#define SCK 15                  //spi clock line
-#define MISO 14
-#define MOSI 16
-    pinMode(SCK, OUTPUT);
-    pinMode(MISO, INPUT);
-    pinMode(MOSI, OUTPUT);
     SPI.begin();
     SPI.setDataMode(SPI_MODE0);
     SPI.setClockDivider(SPI_CLOCK_DIV4);
@@ -369,7 +383,8 @@ void loop()
     canread(1);
     canread(2);
     printcanrx();
-#if 0
+    
+#if 1
     if (!(x++ & 65535))
         cansend(2, 0x08880808, true, 8, (byte *) "HelloCAN");
     if (!((x ^ 32768) & 65535))
