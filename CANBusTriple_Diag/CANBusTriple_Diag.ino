@@ -142,18 +142,19 @@ PROGMEM prog_uchar quantimings[] = {
 };
 
 //CANBus triple clkout
-#define CAN_XTAL 8000000
+#define CAN_XTAL 16000000
+#define QUANTA 16
 
 // 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
 {
-    byte q = 16;
+    byte q = QANTA;
     byte propseg = pgm_read_byte_near(quantimings + ((q - 8) << 2));
     byte phaseseg1 = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 1);
     byte phaseseg2 = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 2);
     byte syncjump = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 3);
 
-    unsigned maxrate = (CAN_XTAL / 1000) / (propseg + phaseseg1 + phaseseg2 + 4);
+    unsigned maxrate = (CAN_XTAL / 1000 / 2) / (propseg + phaseseg1 + phaseseg2 + 4);
 
     byte cnf1, cnf2, cnf3;
     cnf1 = (maxrate / bitrate) - 1;
@@ -413,5 +414,5 @@ static byte readRxStatus(byte bid)
     digitalWrite(can_ss[bid], HIGH);
     return retVal;
 }
-#endif  /* 
+#endif  /*
  */
