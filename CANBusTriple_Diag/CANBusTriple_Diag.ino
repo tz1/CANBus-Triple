@@ -121,24 +121,24 @@ static void canread(byte bid)
 
 // Time Quanta (prescaling) with values for each closest to 80% as per SAE spec
 PROGMEM prog_uchar quantimings[] = {
-    2,1,1,0,//8 SP@75%
-    2,2,1,0,
-    2,3,1,0,//10 @80
-    2,4,1,1,
-    2,5,1,1,
-    2,5,2,1,
-    3,5,2,1,
-    4,5,2,1,//15 @80
-    5,5,2,1,//16 @81.25
-    6,5,2,2,
-    7,4,3,2,
-    7,5,3,2,
-    7,6,3,2,//20 @ 80
-    7,7,3,2,
-    7,7,4,2,
-    7,7,5,2,
-    7,7,6,3,
-    7,7,7,3,
+    2, 1, 1, 0,                 //8 SP@75%
+    2, 2, 1, 0,
+    2, 3, 1, 0,                 //10 @80
+    2, 4, 1, 1,
+    2, 5, 1, 1,
+    2, 5, 2, 1,
+    3, 5, 2, 1,
+    4, 5, 2, 1,                 //15 @80
+    5, 5, 2, 1,                 //16 @81.25
+    6, 5, 2, 2,
+    7, 4, 3, 2,
+    7, 5, 3, 2,
+    7, 6, 3, 2,                 //20 @ 80
+    7, 7, 3, 2,
+    7, 7, 4, 2,
+    7, 7, 5, 2,
+    7, 7, 6, 3,
+    7, 7, 7, 3,
 };
 
 //CANBus triple clkout
@@ -147,11 +147,11 @@ PROGMEM prog_uchar quantimings[] = {
 // 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
 {
-    byte q=16;
-    byte propseg = pgm_read_byte_near(quantimings+((q-8)<<2));
-    byte phaseseg1 = pgm_read_byte_near(quantimings+((q-8)<<2)+1);
-    byte phaseseg2 = pgm_read_byte_near(quantimings+((q-8)<<2)+2);
-    byte syncjump = pgm_read_byte_near(quantimings+((q-8)<<2)+3);
+    byte q = 16;
+    byte propseg = pgm_read_byte_near(quantimings + ((q - 8) << 2));
+    byte phaseseg1 = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 1);
+    byte phaseseg2 = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 2);
+    byte syncjump = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 3);
 
     unsigned maxrate = (CAN_XTAL / 1000) / (propseg + phaseseg1 + phaseseg2 + 4);
 
@@ -257,9 +257,9 @@ void setup()
     // setup CANs
     byte j, cb;
     for (j = 0; j < 3; j++) {
-        cb = EEPROM.read(j);
-        if (cb < sizeof(canrates))
-            curbusrate[j] = 250;        //canrates[cb];
+        //cb = EEPROM.read(j);
+        //if (cb < sizeof(canrates))
+        curbusrate[j] = 250;    //canrates[cb];
     }
 #define CAN1INT 0
 #define CAN1SELECT 0
@@ -365,9 +365,9 @@ void printcanrx()
         }
         if (mbits) {
             *benc++ = b64[more];
-// "correct" b64 with equals termination
+            // "correct" b64 with equals termination
             *benc++ = '=';
-            if( mbits == 2 )
+            if (mbits == 2)
                 *benc++ = '=';
         }
         *benc = 0;
@@ -383,7 +383,7 @@ void loop()
     canread(1);
     canread(2);
     printcanrx();
-    
+
 #if 1
     if (!(x++ & 65535))
         cansend(2, 0x08880808, true, 8, (byte *) "HelloCAN");
