@@ -21,7 +21,7 @@
 // merr, wake err tx2 tx1 tx0 rx1 rx1
 #define EFLG 0x2D               // Error Register address
 
-#define BOOT_LED 7
+#define BOOT_LED 13
 
 #define NCANS 3
 static byte can_ss[NCANS];      // slave selects
@@ -120,7 +120,8 @@ static void canread(byte bid)
 }
 
 // Time Quanta (prescaling) with values for each closest to 80% as per SAE spec
-PROGMEM prog_uchar quantimings[] = {
+//PROGMEM prog_uchar quantimings[] = {
+PROGMEM const unsigned char quantimings[] = {
     2, 1, 1, 0,                 //8 SP@75%
     2, 2, 1, 0,
     2, 3, 1, 0,                 //10 @80
@@ -148,7 +149,7 @@ PROGMEM prog_uchar quantimings[] = {
 // 1 + propseg + 1 + phaseseg1 + 1 [@SP] + phaseseg2 + 1 == TotalTimeQuanta
 static int canbaud(byte bid, unsigned bitrate)  //sets bitrate for CAN node
 {
-    byte q = QANTA;
+    byte q = QUANTA;
     byte propseg = pgm_read_byte_near(quantimings + ((q - 8) << 2));
     byte phaseseg1 = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 1);
     byte phaseseg2 = pgm_read_byte_near(quantimings + ((q - 8) << 2) + 2);
@@ -189,7 +190,10 @@ void canmode(byte bid, byte mode)       //put CAN controller in one of five mode
     digitalWrite(can_ss[bid], LOW);
     SPI.transfer(BIT_MODIFY);
     SPI.transfer(CANCTRL);
-    SPI.transfer(0xe0);
+    SPI.transfer(0xe7);
+    mode &= ~7;
+    if( !bid )
+      mode |= 4;
     SPI.transfer(mode);
     digitalWrite(can_ss[bid], HIGH);
 }
@@ -214,6 +218,11 @@ void intcanrx0()
 void intcanrx1()
 {
     canread(1);
+}
+
+void intcanrx2()
+{
+    canread(2);
 }
 #endif
 static byte can_reset[3];
@@ -254,7 +263,7 @@ void setup()
     SPI.setDataMode(SPI_MODE0);
     SPI.setClockDivider(SPI_CLOCK_DIV4);
     SPI.setBitOrder(MSBFIRST);
-
+    
     // setup CANs
     byte j, cb;
     for (j = 0; j < 3; j++) {
@@ -262,21 +271,23 @@ void setup()
         //if (cb < sizeof(canrates))
         curbusrate[j] = 250;    //canrates[cb];
     }
-#define CAN1INT 0
-#define CAN1SELECT 0
 #define CAN1RESET 4
+#define CAN1INT 3
+#define CAN1SELECT 9
     setcan(0, CAN1SELECT, CAN1RESET, curbusrate[0]);
-#define CAN2INT 1
-#define CAN2SELECT 1
 #define CAN2RESET 12
+#define CAN2INT 2
+#define CAN2SELECT 10
     setcan(1, CAN2SELECT, CAN2RESET, curbusrate[1]);
-#define CAN3SELECT 5
 #define CAN3RESET 11
+#define CAN3INT 7
+#define CAN3SELECT 5
     setcan(2, CAN3SELECT, CAN3RESET, curbusrate[2]);
 
 #ifdef USEINTS
     attachInterrupt(CAN1INT, intcanrx0, LOW);
     attachInterrupt(CAN2INT, intcanrx1, LOW);
+    attachInterrupt(CAN3INT, intcanrx2, LOW);
 #endif
 
     cansend(2, 0x08880808, true, 8, (byte *) "HelloCAN");
