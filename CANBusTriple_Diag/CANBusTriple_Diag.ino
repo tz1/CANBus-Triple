@@ -25,10 +25,11 @@
 
 #define NCANS 3
 static byte can_ss[NCANS];      // slave selects
-static byte spixbuf[16], spixlen;
 
 #if 1
 #include <avr/io.h>
+static byte spixbuf[16], spixlen;
+
 static void sendspiblock()
 {
   byte *buf = spixbuf, len = spixlen;
@@ -73,15 +74,7 @@ static void recvspiblock(unsigned short len)
     *buf++ = SPDR;
   }
 }
-
-void x() {
-  SPCR = 0x50;
-  SPI.setClockDivider(0);
-
-}
 #endif
-
-
 
 static byte canstatus(byte bid)
 {
@@ -260,6 +253,7 @@ void canmode(byte bid, byte mode)       //put CAN controller in one of five mode
   digitalWrite(can_ss[bid], HIGH);
 }
 
+#define USEINTS
 #ifdef USEINTS
 // Enable / Disable interrupt pin on message Rx
 void canrxinte(byte bid, bool enable)
@@ -271,22 +265,20 @@ void canrxinte(byte bid, bool enable)
   SPI.transfer(enable ? 3 : 0);
   digitalWrite(can_ss[bid], HIGH);
 }
-
 void intcanrx0()
 {
   canread(0);
 }
-
 void intcanrx1()
 {
   canread(1);
 }
-
 void intcanrx2()
 {
   canread(2);
 }
 #endif
+
 static byte can_reset[3];
 static unsigned int canrates[8] = { 500, 250, 125, 100, 50, 20, 10 };   //, 1000
 
@@ -334,25 +326,25 @@ void setup()
     curbusrate[j] = 250;    //canrates[cb];
   }
 #define CAN1RESET 4
-#define CAN1INT 3
+#define CAN1INT 3 // int0
 #define CAN1SELECT 9
   setcan(0, CAN1SELECT, CAN1RESET, curbusrate[0]);
 #define CAN2RESET 12
-#define CAN2INT 2
+#define CAN2INT 2 // int1
 #define CAN2SELECT 10
   setcan(1, CAN2SELECT, CAN2RESET, curbusrate[1]);
 #define CAN3RESET 11
-#define CAN3INT 7
+#define CAN3INT 7 // int6
 #define CAN3SELECT 5
   setcan(2, CAN3SELECT, CAN3RESET, curbusrate[2]);
 
 #ifdef USEINTS
-  attachInterrupt(CAN1INT, intcanrx0, LOW);
-  attachInterrupt(CAN2INT, intcanrx1, LOW);
-  attachInterrupt(CAN3INT, intcanrx2, LOW);
+  attachInterrupt(0, intcanrx0, LOW);
+  attachInterrupt(1, intcanrx1, LOW);
+  attachInterrupt(4, intcanrx2, LOW);
 #endif
 
-  cansend(2, 0x08880808, true, 8, (byte *) "HelloCAN");
+//  cansend(2, 0x08880808, true, 8, (byte *) "HelloCAN");
 
 }
 
@@ -452,12 +444,14 @@ void printcanrx()
 
 void loop()
 {
-  static unsigned long x;
+#ifndef USEINTS
   canread(0);
   canread(1);
   canread(2);
+#endif  
   printcanrx();
 #if 0
+  static unsigned long x;
   if (!(x++ & 65535))
     cansend(2, 0x08880808, true, 8, (byte *) "HelloCAN");
   if (!((x ^ 32768) & 65535))
