@@ -14,6 +14,7 @@
 #define BIT_MODIFY 0x05         //Other commands
 
 //Registers
+#define RXERCNT 0x1d            //receive error count
 #define CNF3 0x28
 #define CANCTRL 0x0F            //Mode control register
 #define CANINTE 0x2B            // Interrupt Enable
@@ -23,10 +24,44 @@
 
 #define BOOT_LED 13
 
-#define NCANS 3
-static byte can_ss[NCANS];      // slave selects
+#define NCAN 3
+
+#define CAN1RESET 4
+#define CAN1INT 0 //D3 // int0
+#define CAN1SELECT 9
+
+#define CAN2RESET 12
+#define CAN2INT 1 //D2 // int1
+#define CAN2SELECT 10
+
+#define CAN3RESET 11
+#define CAN3INT 4 //D7 // int.6
+#define CAN3SELECT 5
+static byte can_reset[NCAN] = { CAN1RESET, CAN2RESET, CAN3RESET };
+static byte can_ss[NCAN] = { CAN1SELECT, CAN2SELECT, CAN3SELECT };
 
 #include <avr/io.h>
+
+// 8MHz SPI Read
+static void recvspiblock(byte *buf, unsigned short len)
+{
+  if (SPSR & 1) {
+    byte t;
+    SPDR = 0xff;
+    while (--len) {
+      asm(" .rept 9\n nop\n .endr");
+      t = SPDR;
+      SPDR = 0xff;
+      // there is actuallya race condition if an interrupt occurs here.
+      *buf++ = t;         // double buffered
+    }
+    while (!(SPSR & 0x80));
+    SPSR &= 0x7f;
+    *buf = SPDR;
+  }
+}
+
+#ifdef SRAM
 static byte spixbuf[16], spixlen;
 
 static void sendspiblock(byte *buf, unsigned short len)
@@ -45,30 +80,6 @@ static void sendspiblock(byte *buf, unsigned short len)
     while (!(SPSR & 0x80));
     SPSR &= 0x7f;
     x = SPDR;
-  }
-}
-
-static void recvspiblock(byte *buf, unsigned short len)
-{
-  if (SPSR & 1) {
-    byte t;
-    SPDR = 0xff;
-    while (--len) {
-      asm(" .rept 9\n nop\n .endr");
-      t = SPDR;
-      SPDR = 0xff;
-      // there is actuallya race condition if an interrupt occurs here.
-      *buf++ = t;         // double buffered
-    }
-    while (!(SPSR & 0x80));
-    SPSR &= 0x7f;
-    *buf = SPDR;
-  }
-  while (len--) {
-    SPDR = 0xff;
-    while (!(SPSR & 0x80));
-    SPSR &= 0x7f;
-    *buf++ = SPDR;
   }
 }
 
@@ -97,7 +108,7 @@ static void sramwrite(unsigned long addr, byte *buf, unsigned short len )
   sendspiblock(buf,len);  
   digitalWrite(SRAMSELECT, HIGH);
 }
-
+#endif
 static byte canstatus(byte chan)
 {
   byte retVal;
@@ -157,17 +168,15 @@ static bool cansend(byte chan, unsigned long ident, bool extid, byte len, byte *
 #define CANBUFSIZ 16
 byte canmsgbuf[CANBUFSIZ][16];
 byte canmsghead = 0, canmsgtail = 0;
-
+byte rxcnt[NCAN];
 static void canread(byte chan)
 {
   byte rxstatus = canstatus(chan) & 3;
   if (!rxstatus)
     return;
-
-  digitalWrite(BOOT_LED, HIGH);
+//  digitalWrite(BOOT_LED, HIGH);
   byte bufsel;
   byte which = READ_RX_BUF_0_ID;
-
   for (bufsel = 1; bufsel < 3; bufsel <<= 1, which += 4) {
     if (!(rxstatus & bufsel))
       continue;
@@ -177,23 +186,11 @@ static void canread(byte chan)
     *finf++ = chan;
     digitalWrite(can_ss[chan], LOW);
     SPI.transfer(which);
-#if 1
-    recvspiblock(spixbuf, 13);
-    memcpy( finf, spixbuf, 5 + (spixbuf[4] & 0x0f) );
-#else
-    byte j;
-    for (j = 0; j < 5; j++)
-      *finf++ = SPI.transfer(0xFF);
-    //id high //id low plus ext  S2S1S0 SRR EXTID/STDID x EID17 EID16
-    //extended id 15..8 //extended id 7..0
-    // x, RTRxF, rsv, rsv, DLC:4
-    byte len = finf[-1] & 0x0F;     //data length code
-    while (len--)
-      *finf++ = SPI.transfer(0xFF);
-#endif
+    recvspiblock(finf, 13);
     digitalWrite(can_ss[chan], HIGH);
+    rxcnt[chan]++;
   }
-  digitalWrite(BOOT_LED, LOW);
+//  digitalWrite(BOOT_LED, LOW);
 }
 
 // Time Quanta (prescaling) with values for each closest to 80% as per SAE spec
@@ -304,30 +301,55 @@ static void intcanrx2()
 }
 #endif
 
-static byte can_reset[3];
-
 //  note 83(.3)k, 33(.3)k and others are also doable
-static unsigned long curbusrate[3] = { 500000, 250000, 125000 };
+static unsigned long curbusrate[3] = { 500001, 250001, 125001 };
 
-static void setcan(byte chan, byte ss, byte reset, unsigned long rate)
+static void setcan(byte chan, unsigned long rate)
 {
   // set the slaveSelectPin as an output
-  can_ss[chan] = ss;
-  can_reset[chan] = reset;
+  byte ss = can_ss[chan];
+  byte reset = can_reset[chan];
   pinMode(ss, OUTPUT);
   pinMode(reset, OUTPUT);
   digitalWrite(reset, LOW);   /* RESET CAN CONTROLLER */
   delay(50);
   digitalWrite(reset, HIGH);
   delay(100);
-  if (!canbaud(chan, rate))
+  if (!canbaud(chan, rate & ~1))
     curbusrate[chan] = rate;
   else
-    canbaud(chan, 500000);
-  canmode(chan, NORMAL);
+    canbaud(chan, 500001);
+// AUTOBAUD - use NORMAL for 
+  if( curbusrate[chan] & 1 )
+    canmode(chan, LISTEN);
+  else
+    canmode(chan, NORMAL);
 #ifdef USEINTS
   canrxinte(chan, true);
 #endif
+}
+
+static void checkautobaud(byte chan)
+{
+  if( !(curbusrate[chan] & 1 ))
+    return;
+    
+  digitalWrite(can_ss[chan], LOW);
+  SPI.transfer(READ_STATUS);
+  byte rxerc = SPI.transfer(0xFF);
+  digitalWrite(can_ss[chan], HIGH);
+  
+  if( rxerc < 8 && rxcnt[chan] > 8 ) {
+    curbusrate[chan] &= ~1;
+    canmode(chan, NORMAL);
+    return;
+  }
+  if( curbusrate[chan] < 200000 )
+    curbusrate[chan] = 500000;
+  else
+    curbusrate[chan] >>= 1;
+  setcan( chan, curbusrate[chan] );
+  curbusrate[chan] |= 1;
 }
 
 #define BT_RESET TXLED //PD5
@@ -348,28 +370,24 @@ void setup()
   SPI.setDataMode(SPI_MODE0);
   SPI.setClockDivider(SPI_CLOCK_DIV2); // 8MHz
   SPI.setBitOrder(MSBFIRST);
-
+  
+#ifdef SRAM
   // setup SPI RAM
   pinMode(SRAMSELECT, OUTPUT);
+#endif
 
   // setup CANs
   byte j;
-  for (j = 0; j < 3; j++) {
+  for (j = 0; j < NCAN; j++) {
+    rxcnt[j] = 0;
     //cb = EEPROM.read(j<<2);
-    curbusrate[j] = 250000;    //canrates[cb];
+    curbusrate[j] = 500001;    //canrates[cb];
+    //curbusrate[j] = 250000;    //canrates[cb];
   }
-#define CAN1RESET 4
-#define CAN1INT 0 //D3 // int0
-#define CAN1SELECT 9
-  setcan(0, CAN1SELECT, CAN1RESET, curbusrate[0]);
-#define CAN2RESET 12
-#define CAN2INT 1 //D2 // int1
-#define CAN2SELECT 10
-  setcan(1, CAN2SELECT, CAN2RESET, curbusrate[1]);
-#define CAN3RESET 11
-#define CAN3INT 4 //D7 // int.6
-#define CAN3SELECT 5
-  setcan(2, CAN3SELECT, CAN3RESET, curbusrate[2]);
+
+  setcan(0, curbusrate[0]);
+  setcan(1, curbusrate[1]);
+  setcan(2, curbusrate[2]);
 
 #ifdef USEINTS
   attachInterrupt(CAN1INT, intcanrx0, LOW);
@@ -485,7 +503,14 @@ void loop()
   canread(2);
 #endif  
   printcanrx();
-
+#if 1  
+static unsigned long x;  
+  if (!(x++ & 0xfffff)) {
+  checkautobaud(0);
+  checkautobaud(1);
+  checkautobaud(2);
+  }
+  #endif
 //  sramread( 0, spixbuf, 13 );
 //  Serial.println((const char *)spixbuf);
   while(Serial.available()) Serial1.write(Serial.read());
