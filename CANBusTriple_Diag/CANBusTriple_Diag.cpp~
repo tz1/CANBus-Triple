@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <SPI.h>
 #include <EEPROM.h>
 #include <avr/pgmspace.h>
@@ -42,9 +41,10 @@
 static byte can_reset[NCAN] = { CAN1RESET, CAN2RESET, CAN3RESET };
 static byte can_ss[NCAN] = { CAN1SELECT, CAN2SELECT, CAN3SELECT };
 
+
 // 8MHz SPI Read
-#define static
-static void rcvspiblk(byte *buf, unsigned short len)
+
+void rcvspiblk(byte *buf, unsigned short len)
 {
   if (SPSR & 1) {
     byte t;
@@ -275,7 +275,7 @@ void canmode(byte chan, byte mode)       //put CAN controller in one of five mod
   digitalWrite(can_ss[chan], HIGH);
 }
 
-//#define USEINTS
+#define USEINTS
 #ifdef USEINTS
 // Enable / Disable interrupt pin on message Rx
 static void canrxinte(byte chan, bool enable)
@@ -382,8 +382,8 @@ void setup()
   for (j = 0; j < NCAN; j++) {
     rxcnt[j] = 0;
     //cb = EEPROM.read(j<<2);
-    //curbusrate[j] = 500001;    //canrates[cb];
-    curbusrate[j] = 250000;    //canrates[cb];
+    curbusrate[j] = 500001;    //canrates[cb];
+    //curbusrate[j] = 250000;    //canrates[cb];
   }
 
   setcan(0, curbusrate[0]);
@@ -495,7 +495,7 @@ void printcanrx()
 #endif
   }
 }
-static unsigned long canscnt = 0;
+
 void loop()
 {
 #ifndef USEINTS
@@ -504,7 +504,7 @@ void loop()
   canread(2);
 #endif  
   printcanrx();
-#if 0
+#if 1  
 static unsigned long x;  
   if (!(x++ & 0xfffff)) {
   checkautobaud(0);
@@ -514,23 +514,9 @@ static unsigned long x;
   #endif
 //  sramread( 0, spixbuf, 13 );
 //  Serial.println((const char *)spixbuf);
-#if 0
   while(Serial.available()) Serial1.write(Serial.read());
   while(Serial1.available()) Serial.write(Serial1.read());
-#endif
-#if 1
-{ 
-  byte buf[8];
-  memset( buf, 0xff, 4 );
-  buf[4] = canscnt;
-  buf[5] = canscnt>>8;
-  buf[6] = canscnt>>16;
-  buf[7] = canscnt>>24;
-  cansend(0, 0x18FEE000, 1, 8, buf);
-  canscnt++;
-  delay(1);
-}
-#endif
+
 #if 0
   static unsigned long x;
   if (!(x++ & 65535))
